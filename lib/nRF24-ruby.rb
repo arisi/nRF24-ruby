@@ -5,7 +5,6 @@ require 'pp'
 require 'thread'
 require 'pi_piper'
 include PiPiper
-require 'minimal-http-ruby'
 
 class Radio
   @@all=[]
@@ -222,7 +221,7 @@ class Radio
     @ce.on
     @cs.on
     @@all<<self
-    pp self
+    puts "Initializing #{hash[:id]}..."
     wreg :CONFIG,0x0b
     wreg :SETUP_RETR,0x8f
     wreg :SETUP_AW,0x03
@@ -233,25 +232,11 @@ class Radio
     wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
 
     cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
-    cmd :ACTIVATE
     wreg :FEATURE,0x05
     cmd :FLUSH_TX
     @recv_t=do_recv if  @id==:toka
     @send_t=do_send if  @id==:eka
+    puts "Done #{hash[:id]}!"
   end
-end
-
-minimal_http_server http_port: 8088 #, http_path: "./http/"
-
-
-r0=Radio.new id: :eka, ce: 22,cs: 27
-r1=Radio.new id: :toka, ce: 24,cs: 23
-
-loop do
-  #r0.dump_regs false
-  #r1.dump_regs false
-  puts "\n0: rcnt:#{r0.rcnt} | rfull:#{r0.rfull} ,scnt:#{r0.scnt} "
-  puts "1: rcnt:#{r1.rcnt} | rfull:#{r1.rfull} ,scnt:#{r1.scnt} "
-  sleep 1
 end
 
