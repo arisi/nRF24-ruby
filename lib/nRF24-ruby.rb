@@ -228,8 +228,10 @@ class NRF24
     cmd :ACTIVATE
     wreg :FEATURE,0x05
     cmd :FLUSH_TX
-    @recv_t=do_recv if  @id==:toka
-    @send_t=do_send if  @id==:eka
+    if hash[:roles]
+      @recv_t=do_recv if hash[:roles].include? :send
+      @send_t=do_send if hash[:roles].include? :recv
+    end
   end
 end
 

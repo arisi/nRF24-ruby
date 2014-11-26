@@ -18,8 +18,8 @@ if true
 end
 
 
-r0=NRF24.new id: :eka, ce: 22,cs: 27
-r1=NRF24.new id: :toka, ce: 24,cs: 23
+r0=NRF24.new id: :eka, ce: 22,cs: 27, roles: [:send]
+r1=NRF24.new id: :toka, ce: 24,cs: 23, roles: [:recv]
 
 puts "Main Loop Starts:"
 
