@@ -13,13 +13,13 @@ puts "\nPure Ruby nRF24L01 Driver Starting..."
 if true
   puts "Loading Http-server.. hold on.."
   require 'minimal-http-ruby'
-  minimal_http_server http_port: 8088 #, http_path: "./http/"
+  minimal_http_server http_port: 8088, http_path: "./http/"
   puts "\n"
 end
 
 
-r0=Radio.new id: :eka, ce: 22,cs: 27
-r1=Radio.new id: :toka, ce: 24,cs: 23
+r0=NRF24.new id: :eka, ce: 22,cs: 27
+r1=NRF24.new id: :toka, ce: 24,cs: 23
 
 puts "Main Loop Starts:"
 

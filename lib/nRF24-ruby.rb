@@ -6,7 +6,7 @@ require 'thread'
 require 'pi_piper'
 include PiPiper
 
-class Radio
+class NRF24
   @@all=[]
 
   @@regs={
@@ -63,13 +63,12 @@ class Radio
   end
 
   def cmd c,data=[]
-    status=0xff
     ret=[]
     cc=get_ccode(c)
     @@sem.synchronize do
       @cs.off 
       PiPiper::Spi.begin do 
-        status=write cc
+        @status=write cc
         data.each do |byte|
           ret << write(byte)
         end
@@ -81,14 +80,13 @@ class Radio
 
 
   def rreg reg
-    status=0xff
     data=0
     i,bytes =get_address reg
     cc=get_ccode(:R_REGISTER) +i
     @@sem.synchronize do
       @cs.off
       PiPiper::Spi.begin do 
-        status=write cc
+        @status=write cc
         if bytes==1
           data=write(0xff)
         else
@@ -100,16 +98,15 @@ class Radio
       end
       @cs.on
     end
-    [status,data,bytes]
+    [@status,data,bytes]
   end
 
   def wreg reg,data
-    status=0xff
-    data2=0
     i,bytes=get_address reg
+    cc=get_ccode(:W_REGISTER)+i
     @@sem.synchronize do
+      status=0xff
       @cs.off
-      cc=get_ccode(:W_REGISTER)+i
       PiPiper::Spi.begin do
         status=write cc
         if bytes==1
@@ -121,12 +118,9 @@ class Radio
         end
       end
       @cs.on
+      @status=status
     end
-    if status==0xff
-      printf("Error: Write Fails %-12.12s(%02X) -> %02X s=%02X\n",reg,i,data,status);
-      raise "Write Error"
-    end
-    [status]
+    [@status]
   end
 
   def send packet
@@ -211,7 +205,7 @@ class Radio
   attr_accessor :rcnt,:scnt,:rfull
 
   def initialize(hash={})
-    @regs={} #the internal registers
+    @regs={} 
     @rcnt=0
     @rfull=0
     @scnt=0
@@ -221,7 +215,6 @@ class Radio
     @ce.on
     @cs.on
     @@all<<self
-    puts "Initializing #{hash[:id]}..."
     wreg :CONFIG,0x0b
     wreg :SETUP_RETR,0x8f
     wreg :SETUP_AW,0x03
@@ -232,11 +225,11 @@ class Radio
     wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
 
     cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
+    cmd :ACTIVATE
     wreg :FEATURE,0x05
     cmd :FLUSH_TX
     @recv_t=do_recv if  @id==:toka
     @send_t=do_send if  @id==:eka
-    puts "Done #{hash[:id]}!"
   end
 end
 
