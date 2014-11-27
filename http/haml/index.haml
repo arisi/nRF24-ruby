@@ -10,20 +10,13 @@
   %body
     %h1 nRF24 Pure Ruby Driver 
     %p.info ?
-    %form{ onsubmit: "ajax(this); return(false);"}
-      Msg:
-      %input{name: "msg", size: 20}
-      Topic:
-      %input{name: "topic", size: 10}
-      QoS:
-      %select.qos{name: "qos"}
-        %option{value: "0"} 0
-        %option{value: "1"} 1
-        %option{value: "2"} 2
-      Retain:
-      %input{type: :checkbox,name: "retain", value: "true"}
-      %button{value: "Publish", onclick: "ajax(this); return(false);"}
-        Publish
+    %form{ onsubmit: "ajaxform(this); return(false);"}
+      Channel:
+      %input{name: "chan", size: 10}
+      Auto_Ack:
+      %input{type: :checkbox,name: "aa", value: "true"}
+      %button{value: "Exec", onclick: "ajaxform(this); return(false);"}
+        ReConfig&Reset
     %hr
     %table
       %tr

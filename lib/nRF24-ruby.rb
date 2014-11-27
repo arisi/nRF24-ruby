@@ -9,29 +9,31 @@ include PiPiper
 class NRF24
   @@all=[]
   @@PAYLOAD_SIZE=32
+  @@SPI_CLOCK=250000
+        
   @@regs={
-    CONFIG:      {address: 0x00},
-    EN_AA:       {address: 0x01},
-    EN_RXADDR:   {address: 0x02},
+    CONFIG:      {address: 0x00,len:7},
+    EN_AA:       {address: 0x01,len:5},
+    EN_RXADDR:   {address: 0x02,len:5},
     SETUP_AW:    {address: 0x03},
     SETUP_RETR:  {address: 0x04},
-    RF_CH:       {address: 0x05},
-    RF_SETUP:    {address: 0x06},
-    STATUS:      {address: 0x07, poll: 1},
+    RF_CH:       {address: 0x05,format: :dec},
+    RF_SETUP:    {address: 0x06,len:4},
+    STATUS:      {address: 0x07, poll: 1,len: 7},
     OBSERVE_TX:  {address: 0x08, poll: 1},
-    CD:          {address: 0x09, poll: 1},
-    RX_ADDR_P0:  {address: 0x0A, bytes: 5 },
-    RX_ADDR_P1:  {address: 0x0B, bytes: 5 },
-    RX_ADDR_P2:  {address: 0x0C},
-    RX_ADDR_P3:  {address: 0x0D},
-    RX_ADDR_P4:  {address: 0x0E},
-    RX_ADDR_P5:  {address: 0x0F},
-    TX_ADDR:     {address: 0x10, bytes: 5 },
-    RX_PW_P0:    {address: 0x11},
-    RX_PW_P1:    {address: 0x12},
-    FIFO_STATUS: {address: 0x17, poll: 1},
-    DYNPD:       {address: 0x1C},
-    FEATURE:     {address: 0x1D},
+    CD:          {address: 0x09, poll: 1, len: 1},
+    RX_ADDR_P0:  {address: 0x0A, bytes: 5, format: :hex },
+    RX_ADDR_P1:  {address: 0x0B, bytes: 5, format: :hex },
+    RX_ADDR_P2:  {address: 0x0C, format: :hex},
+    RX_ADDR_P3:  {address: 0x0D, format: :hex},
+    RX_ADDR_P4:  {address: 0x0E, format: :hex},
+    RX_ADDR_P5:  {address: 0x0F, format: :hex},
+    TX_ADDR:     {address: 0x10, bytes: 5 , format: :hex},
+    RX_PW_P0:    {address: 0x11, format: :dec},
+    RX_PW_P1:    {address: 0x12, format: :dec},
+    FIFO_STATUS: {address: 0x17, poll: 1, len:7},
+    DYNPD:       {address: 0x1C,len:5},
+    FEATURE:     {address: 0x1D,len:3},
   }
 
   @@cmds={
@@ -53,7 +55,7 @@ class NRF24
     begin
       s=sprintf(str,*args)
       text=sprintf("%s: %s",Time.now.iso8601,s)
-      @@log << {stamp: Time.now.to_i, text: text}
+      @@log << {stamp: Time.now.to_i, text: text.encode("UTF-8", :invalid=>:replace, :replace=>"?")}
     rescue => e
       pp e.backtrace
       puts "note dies: #{e} '#{str}'"
@@ -84,6 +86,7 @@ class NRF24
     @@sem.synchronize do
       @cs.off 
       PiPiper::Spi.begin do 
+        clock(@@SPI_CLOCK)
         status=write cc
         data.each do |byte|
           ret << write(byte)
@@ -103,6 +106,7 @@ class NRF24
     @@sem.synchronize do
       @cs.off
       PiPiper::Spi.begin do 
+        clock(@@SPI_CLOCK)
         status=write cc
         if bytes==1
           data=write(0xff)
@@ -126,6 +130,7 @@ class NRF24
       status=0xff
       @cs.off
       PiPiper::Spi.begin do
+        clock(@@SPI_CLOCK)
         status=write cc
         if bytes==1
           write(data)
@@ -148,10 +153,10 @@ class NRF24
     end
     @ce.off
     wreg :CONFIG,0x0a
-    if false
-      cmd :W_TX_PAYLOAD_NOACK,pac
-    else
+    if @s[:params]
       cmd :W_TX_PAYLOAD,pac
+    else
+      cmd :W_TX_PAYLOAD_NOACK,pac
     end
     @ce.on
     sleep 0.0005
@@ -175,16 +180,7 @@ class NRF24
     end
   end
 
-  def do_recv
-    Thread.new do
-      #irq=PiPiper::Pin.new(:pin => 17)
-      loop do
-        sleep 1
-      end
-    end
-  end
-
-  def do_send
+  def rf_server
     Thread.new do
       begin
         loop do
@@ -290,9 +286,7 @@ class NRF24
     @@log
   end
 
-  def initialize(hash={})
-    @semh=Mutex.new 
-
+  def hw_init hash
     @s={
       stamp: 0,
       params: hash,
@@ -303,49 +297,56 @@ class NRF24
       scnt: 0,
       sarc: 0,
       sfail: 0,
-      } 
+    } 
     @id=hash[:id]
+    wreg :CONFIG,0x0b
+    wreg :RF_SETUP,0x0f
+    wreg :RF_CH,hash[:chan]||2
+    if hash[:ack]
+      wreg :SETUP_RETR,0x8f
+      wreg :EN_AA,0x7f
+      wreg :DYNPD,0x03
+      wreg :FEATURE,0x07
+    else
+      wreg :SETUP_RETR,0x00
+      wreg :EN_AA,0x00
+      wreg :DYNPD,0x00
+      wreg :FEATURE,0x07
+    end
+    wreg :SETUP_AW,0x03
+    wreg :STATUS,0x70
+    wreg :RX_PW_P0,@@PAYLOAD_SIZE
+    wreg :RX_PW_P1,@@PAYLOAD_SIZE
+    wreg :TX_ADDR,[0x12,0x34,0x56,0x78,0x9a]
+    wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
+
+    if hash[:ack]
+      cmd :ACTIVATE,[ 0]
+    else
+      cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
+    end
+
+    cmd :FLUSH_TX
+    cmd :FLUSH_RX
+  end
+
+  def initialize(hash={})
+    @semh=Mutex.new 
+
+   
     @ce=PiPiper::Pin.new(:pin => hash[:ce], :direction => :out)
     @cs=PiPiper::Pin.new(:pin => hash[:cs], :direction => :out)
 
     @ce.on
     @cs.on
     @@all<<self
-    wreg :CONFIG,0x0b
-    wreg :RF_SETUP,0x00
-    wreg :RF_CH,0x10
-    if false
-      wreg :SETUP_RETR,0x00
-      wreg :EN_AA,0x00
-      wreg :FEATURE,0x07
-    else
-      wreg :SETUP_RETR,0x8f
-      wreg :EN_AA,0x7f
-      wreg :DYNPD,0x03
-      wreg :FEATURE,0x07
-    end
-    wreg :SETUP_AW,0x03
-    wreg :STATUS,0x70
-    wreg :RX_PW_P0,@@PAYLOAD_SIZE
-    wreg :RX_PW_P1,32
-    wreg :TX_ADDR,[0x12,0x34,0x56,0x78,0x9a]
-    wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
 
-    cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
-    #cmd :ACTIVATE,[ 0]
-    #cmd :ACTIVATE
-    cmd :FLUSH_TX
-    cmd :FLUSH_RX
-    if hash[:roles]
-      if hash[:roles].include? :recv
-        @recv_t=do_recv 
-        @recv_q=Queue.new
-      end
-      if hash[:roles].include? :send
-        @send_t=do_send 
-        @send_q=Queue.new
-      end
-    end
+    @recv_q=Queue.new
+    @send_q=Queue.new
+
+    hw_init hash
+
+    @server_t=rf_server 
     @monitor_t=do_monitor
   end
 end

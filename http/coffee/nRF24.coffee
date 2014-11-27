@@ -1,7 +1,7 @@
 regs={}
 stat_vars= ['rcnt','rfull','scnt','sarc','sfail']
 logger = (data) ->
-  console.log "log>",data
+  #console.log "log>",data
   if data.event==0
     $(".log").html("alku\n")
   for l in data.loglines
@@ -15,9 +15,20 @@ dev = (d,obj) ->
       $("#d#{d}r#{k}").html obj[k]
   for k,v of obj.regs
     if (v instanceof Array)
-      $("#d#{d}r#{k}").html "--"
+      str=""
+      for a in v
+        str+=((0x100+a).toString(16).substring(1,3).toUpperCase())
+      $("#d#{d}r#{k}").html str
     else
-      $("#d#{d}r#{k}").html (0x100+v).toString(2).substring(1,9)
+      if regs[k].format =="hex"
+        $("#d#{d}r#{k}").html "0x"+((0x100+v).toString(16).substring(1,3).toUpperCase())
+      else if regs[k].format =="dec"
+        $("#d#{d}r#{k}").html (v).toString(10)
+      else
+        if regs[k].len
+          $("#d#{d}r#{k}").html (0x100+v).toString(2).substring(1+8-regs[k].len,9)
+        else
+          $("#d#{d}r#{k}").html (0x100+v).toString(2).substring(1,9)
 
 update_status = (data) ->
   #console.log data
@@ -29,7 +40,7 @@ update_status = (data) ->
   ret="<table>"
   for k,v of regs
     ret+="<tr>"
-    ret+="<td >#{v}<td>"
+    ret+="<td >#{v.name}<td>"
     ret+="<td id='d0r#{k}'>d0r#{k}<td>"
     ret+="<td id='d1r#{k}'>d1r#{k}<td>"
     ret+="</tr>"
@@ -46,16 +57,17 @@ update_status = (data) ->
   $(".stats").html(ret)
 
 @process_data = (obj) ->
-  console.log "process",obj,obj.type
+  #console.log "process",obj,obj.type
   if obj.type == "register_table"
-    console.log "is table",obj.data
+    raw_regs=[]
     for k,v of  obj.data
-      console.log k,v.address
-      regs[v.address]=k
+      regs[v.address]=v
+      regs[v.address].name=k
+    console.log regs
   build_regs regs
   
 @ajaxform = (obj) ->
-  console.log "doin ajax"
+  console.log "doin ajaxform"
   form=$(obj).closest("form")
   key=form.attr('id')
   q=$( form ).serialize()
