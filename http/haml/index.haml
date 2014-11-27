@@ -1,1 +1,43 @@
-OK!
+!!!
+%html{lang: "fi"}
+  %head
+    %title nRF24 Pure Ruby Driver 
+    %meta{:charset => "utf-8"}/
+    %link{:href => "/css/nRF24.css", :rel => "stylesheet", :type => "text/css"}
+    %link{:href => "http://fonts.googleapis.com/css?family=VT323", :rel => "stylesheet", :type => "text/css"}
+    %script{:src => "https://code.jquery.com/jquery-2.1.1.min.js"}
+    %script{:src => "/nRF24.js"}
+  %body
+    %h1 nRF24 Pure Ruby Driver 
+    %p.info ?
+    %form{ onsubmit: "ajax(this); return(false);"}
+      Msg:
+      %input{name: "msg", size: 20}
+      Topic:
+      %input{name: "topic", size: 10}
+      QoS:
+      %select.qos{name: "qos"}
+        %option{value: "0"} 0
+        %option{value: "1"} 1
+        %option{value: "2"} 2
+      Retain:
+      %input{type: :checkbox,name: "retain", value: "true"}
+      %button{value: "Publish", onclick: "ajax(this); return(false);"}
+        Publish
+    %hr
+    %table
+      %tr
+        %td{width: "20%"}
+          %table.vt
+            %tr
+              %td.regs 
+              %td.stats
+        %td{width: "80%"}
+          %pre.log 
+    %hr
+    %p
+      %font{size: "-1"}
+        Written by
+        %a{href: "mailto:jalopuuverstas@gmail.com"}
+          Ari Siitonen 
+        2014 

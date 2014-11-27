@@ -1,0 +1,14 @@
+table.vt, th.vt, td.vt {
+   text-align: right;
+   font-size: 100%;
+   font-family: 'VT323' ;
+   color: #80ff80;
+   background-color: black;
+   vertical-align: top;
+}
+
+.log {
+    height: 400px;
+    width: 100%;
+    overflow: scroll;
+}
