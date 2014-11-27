@@ -20,8 +20,8 @@ if http
 end
 
 
-r0=NRF24.new id: :eka, ce: 22,cs: 27, roles: [:send,:recv]
-r1=NRF24.new id: :toka, ce: 24,cs: 23, roles: [:send,:recv]
+r0=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, roles: [:send,:recv]
+r1=NRF24.new id: :toka, ce: 24,cs: 23, irq: 22, roles: [:send,:recv]
 
 puts "Main Loop Starts:"
 

@@ -30,6 +30,7 @@ class NRF24
     RX_PW_P0:    {address: 0x11},
     RX_PW_P1:    {address: 0x12},
     FIFO_STATUS: {address: 0x17, poll: 1},
+    DYNPD:       {address: 0x1C},
     FEATURE:     {address: 0x1D},
   }
 
@@ -147,7 +148,11 @@ class NRF24
     end
     @ce.off
     wreg :CONFIG,0x0a
-    cmd :W_TX_PAYLOAD_NOACK,pac
+    if false
+      cmd :W_TX_PAYLOAD_NOACK,pac
+    else
+      cmd :W_TX_PAYLOAD,pac
+    end
     @ce.on
     sleep 0.0005
     @ce.off
@@ -172,8 +177,8 @@ class NRF24
 
   def do_recv
     Thread.new do
+      #irq=PiPiper::Pin.new(:pin => 17)
       loop do
-
         sleep 1
       end
     end
@@ -184,7 +189,21 @@ class NRF24
       begin
         loop do
           donesome=false
+
           s,d,b=rreg :FIFO_STATUS
+          if (s&0x40) == 0x40
+            NRF24::note "got RX_DR --received something"
+            wreg :STATUS,0x40
+          end
+          if (s&0x20) == 0x20
+            NRF24::note "got TX_DS --sent something"
+            wreg :STATUS,0x20
+          end
+          if (s&0x10) == 0x10
+            NRF24::note "****************** got MAX_RT --send fails..."
+            wreg :STATUS,0x10
+            @s[:sfail]+=1
+          end
           if (d&0x01)==0x00
             ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
             @recv_q<<ret
@@ -198,18 +217,24 @@ class NRF24
             @s[:rfull]+=1
             donesome=true
           end
-          #sleep 0.01 if not donesome
 
-
+          #send rate limiter here :)
           if not @send_q.empty?
-            s,d,b=rreg :STATUS
-            if (s&0x01)==0x00
+            if (d&0x20)==0x00
+
+
+              s,d,b=rreg :OBSERVE_TX
+              if (d&0x0f)!=0x00
+                NRF24::note "got ARC_CNT:#{d&0x0f}******************"
+                @s[:sarc]+=d&0x0f
+              end
+
               msg=@send_q.pop 
               send msg 
               @s[:scnt]+=1
             end
           end
-          sleep 0.01
+          sleep 0.01 if not donesome
         end
       rescue Exception =>e
         puts "do_send fails #{e}"
@@ -276,6 +301,8 @@ class NRF24
       rcnt: 0,
       rfull: 0,
       scnt: 0,
+      sarc: 0,
+      sfail: 0,
       } 
     @id=hash[:id]
     @ce=PiPiper::Pin.new(:pin => hash[:ce], :direction => :out)
@@ -285,9 +312,18 @@ class NRF24
     @cs.on
     @@all<<self
     wreg :CONFIG,0x0b
-    wreg :SETUP_RETR,0x00
-#    wreg :SETUP_RETR,0x8f
-    wreg :EN_AA,0x00
+    wreg :RF_SETUP,0x00
+    wreg :RF_CH,0x10
+    if false
+      wreg :SETUP_RETR,0x00
+      wreg :EN_AA,0x00
+      wreg :FEATURE,0x07
+    else
+      wreg :SETUP_RETR,0x8f
+      wreg :EN_AA,0x7f
+      wreg :DYNPD,0x03
+      wreg :FEATURE,0x07
+    end
     wreg :SETUP_AW,0x03
     wreg :STATUS,0x70
     wreg :RX_PW_P0,@@PAYLOAD_SIZE
@@ -296,8 +332,8 @@ class NRF24
     wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
 
     cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
+    #cmd :ACTIVATE,[ 0]
     #cmd :ACTIVATE
-    wreg :FEATURE,0x01
     cmd :FLUSH_TX
     cmd :FLUSH_RX
     if hash[:roles]

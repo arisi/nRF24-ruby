@@ -1,5 +1,5 @@
 regs={}
-
+stat_vars= ['rcnt','rfull','scnt','sarc','sfail']
 logger = (data) ->
   console.log "log>",data
   if data.event==0
@@ -11,7 +11,7 @@ logger = (data) ->
 
 dev = (d,obj) ->
   #ret+="<td>#{obj.scnt}<td>"
-  for k in ['rcnt','rfull','scnt']
+  for k in stat_vars
       $("#d#{d}r#{k}").html obj[k]
   for k,v of obj.regs
     if (v instanceof Array)
@@ -36,7 +36,7 @@ update_status = (data) ->
   ret+="</table>"
   $(".regs").html(ret)
   ret="<table>"
-  for k in ['rcnt','rfull','scnt']
+  for k in stat_vars
     ret+="<tr>"
     ret+="<td >#{k}<td>"
     ret+="<td id='d0r#{k}'>d0r#{k}<td>"
