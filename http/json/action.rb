@@ -2,7 +2,6 @@
 # encode: UTF-8
 
 def json_action request,args,session,event
-  msg=args['msg']||"test_message"
   pp args
   devs=NRF24::all_devices
   chan=(args['chan']||2).to_i
@@ -21,7 +20,7 @@ def json_action request,args,session,event
 	    d.get_regs true
 	  else
 	  	puts "initing #{d}"
-	  	d.hw_init chan: chan, ack: aa
+	  	d.hw_init chan: chan, ack: aa, rf_dr: args['rf_dr'], rf_pwr: args['rf_pwr'], lna_hcurr: args['lna_hcurr']
 	  	d.get_regs true
 	  end
   end

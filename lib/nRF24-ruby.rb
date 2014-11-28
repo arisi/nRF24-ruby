@@ -40,6 +40,7 @@ class NRF24
     R_REGISTER: 0x00,
     W_REGISTER: 0x20,
     ACTIVATE:   0x50,
+    R_RX_PL_WID: 0x60,
     R_RX_PAYLOAD: 0x61,
     W_TX_PAYLOAD: 0xA0,
     FLUSH_TX:   0xe1,
@@ -201,7 +202,7 @@ class NRF24
             @s[:sfail]+=1
           end
           if (d&0x01)==0x00
-            ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
+           ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
             @recv_q<<ret
             @s[:rcnt]+=1
             donesome=true
@@ -300,18 +301,21 @@ class NRF24
     } 
     @id=hash[:id]
     wreg :CONFIG,0x0b
-    wreg :RF_SETUP,0x0f
+    rf_dr=(hash[:rf_dr]||1).to_i&0x01
+    rf_pwr=(hash[:rf_pwr]||3).to_i&0x03
+    lna_hcurr=(hash[:lna_hcurr]||1).to_i&0x01
+    wreg :RF_SETUP,(rf_dr<<3)+(rf_pwr<<1)+lna_hcurr
     wreg :RF_CH,hash[:chan]||2
     if hash[:ack]
       wreg :SETUP_RETR,0x8f
       wreg :EN_AA,0x7f
       wreg :DYNPD,0x03
-      wreg :FEATURE,0x07
+      wreg :FEATURE,0x00
     else
       wreg :SETUP_RETR,0x00
       wreg :EN_AA,0x00
       wreg :DYNPD,0x00
-      wreg :FEATURE,0x07
+      wreg :FEATURE,0x01
     end
     wreg :SETUP_AW,0x03
     wreg :STATUS,0x70

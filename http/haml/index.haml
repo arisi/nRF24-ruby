@@ -13,6 +13,20 @@
     %form{ onsubmit: "ajaxform(this); return(false);"}
       Channel:
       %input{name: "chan", size: 10}
+      Rf_Dr:
+      %select{name: "rf_dr"}
+        %option{value: "1"} 2Mbps
+        %option{value: "0"} 1Mbps
+      Rf_Pwr:
+      %select{name: "rf_pwr"}
+        %option{value: "0"} -18dBm
+        %option{value: "1"} -12dBm
+        %option{value: "2"} -6dBm
+        %option{value: "3"} 0dBm
+      Lna_gain:
+      %select{name: "lna_hcurr"}
+        %option{value: "1"} Normal
+        %option{value: "0"} Low
       Auto_Ack:
       %input{type: :checkbox,name: "aa", value: "true"}
       %button{value: "Exec", onclick: "ajaxform(this); return(false);"}
