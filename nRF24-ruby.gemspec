@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'nRF24-ruby'
-  s.version     = '0.0.2'
+  s.version     = '0.0.4'
   s.date        = '2014-11-28'
   s.summary     = "Pure Ruby Driver and web-utilitity for Radio Chip nRF24 "
   s.description = "Pure Ruby Driver and Utilitity with Http-server for the Ultra Cheap Radio Chip nRF24 "
@@ -11,4 +11,5 @@ Gem::Specification.new do |s|
   s.homepage    = 'https://github.com/arisi/nRF24-ruby'
   s.license     = 'MIT'
   s.add_runtime_dependency "minimal-http-ruby",[">= 0.0.3"]
+  s.add_runtime_dependency "pi_piper",[">= 1.3.2"]
 end

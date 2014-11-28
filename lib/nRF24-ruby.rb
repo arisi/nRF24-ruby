@@ -164,12 +164,15 @@ class NRF24
     end
     @ce.off
     wreg :CONFIG,0x0a
+    #prepend our mac?
+    if @s[:params][:mac_header]
+      pac= NRF24::mac2a(@mac, short:true)+pac
+      pac=pac[0...32]
+    end
     if hash[:ack] and @s[:params][:ack]
       cmd :W_TX_PAYLOAD,pac
-      #puts "with ack"
     else
       cmd :W_TX_PAYLOAD_NOACK,pac
-      #puts "with NOack" 
     end
     @ce.on
     sleep 0.001
@@ -201,11 +204,11 @@ class NRF24
 
           s,d,b=rreg :FIFO_STATUS
           if (s&0x40) == 0x40
-            NRF24::note "got RX_DR --received something"
+            #NRF24::note "got RX_DR --received something"
             wreg :STATUS,0x40
           end
           if (s&0x20) == 0x20
-            NRF24::note "got TX_DS --sent something"
+            #NRF24::note "got TX_DS --sent something"
             wreg :STATUS,0x20
           end
           if (s&0x10) == 0x10
@@ -213,26 +216,30 @@ class NRF24
             wreg :STATUS,0x10
             @s[:sfail]+=1
           end
-          if (d&0x01)==0x00
+
+          while (d&0x01)==0x00
+            @s[:rfull]+=1 if (d&0x02)==0x02
             pipe=(s>>1)&0x05
-            NRF24::note "pipe: #{pipe}"
+            if pipe==0
+              socket=:broadcast
+            else
+              socket=pipe-1
+            end
             ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
-            @recv_q<<ret
+            if @s[:params][:mac_header]
+              sender=NRF24::a2mac(ret[0..1])
+              ret.shift
+              ret.shift
+            end
+            @recv_q<<{msg:ret,socket:socket,from:sender,to:@mac,dir: :in}
             @s[:rcnt]+=1
-            donesome=true
-          end
-          if (d&0x02)==0x02
-            ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
-            @recv_q<<ret
-            @s[:rcnt]+=1
-            @s[:rfull]+=1
+            s,d,b=rreg :FIFO_STATUS
             donesome=true
           end
 
           #send rate limiter here :)
           if not @send_q.empty?
             if (d&0x20)==0x00
-
 
               s,d,b=rreg :OBSERVE_TX
               if (d&0x0f)!=0x00
@@ -241,9 +248,18 @@ class NRF24
               end
 
               msg=@send_q.pop
-              wreg :TX_ADDR,NRF24::mac2a(msg[:tx_mac]) 
-              #puts "send mac: #{msg[:tx_mac]}"
+              #puts "msg:#{msg}"
+              if msg[:socket]==:broadcast
+                to=NRF24::mac2a(NRF24::get_bmac)
+              else
+                to=NRF24::mac2a(msg[:to],socket: msg[:socket])
+              end
+              wreg :TX_ADDR, to
+              msg[:from]=@mac
+              msg[:dir]=:out
               send msg[:msg], ack:msg[:ack]
+              msg[:msg]=msg[:msg].pack("c*")
+              NRF24::note "o #{msg}"
               @s[:scnt]+=1
             end
           end
@@ -307,11 +323,22 @@ class NRF24
     @@log
   end
 
-  def self.mac2a mac
+  def self.a2mac a,hash={}
+    mac=""
+    a.each do |e|
+      mac+=":" if mac!=""
+      mac+=sprintf "%02X",e
+    end
+    mac
+  end
+
+  def self.mac2a mac,hash={}
     a=[]
     mac.split(":").each do |b|
       a<<b.hex
     end
+    a.unshift hash[:socket]||0 if a.size==2 and not hash[:short]
+    #pp a
     a
   end
 
@@ -354,10 +381,7 @@ class NRF24
     wreg :RX_PW_P5,@@PAYLOAD_SIZE
     wreg :TX_ADDR,NRF24::mac2a(@@bmac)
     wreg :RX_ADDR_P0,NRF24::mac2a(@@bmac)
-    wreg :RX_ADDR_P2,0xfc
-    wreg :RX_ADDR_P3,0xfd
-    wreg :RX_ADDR_P4,0xfe
-    wreg :RX_ADDR_P5,0xff
+    
     if hash[:mac] #keep old if not defined
       wreg :RX_ADDR_P1,NRF24::mac2a(hash[:mac]) 
       @mac=hash[:mac]
@@ -370,7 +394,10 @@ class NRF24
       end
       @mac=mac
     end
-
+    wreg :RX_ADDR_P2,1
+    wreg :RX_ADDR_P3,2
+    wreg :RX_ADDR_P4,3
+    wreg :RX_ADDR_P5,4
 #    if hash[:ack]
  #     cmd :ACTIVATE,[ 0]
   #  else
