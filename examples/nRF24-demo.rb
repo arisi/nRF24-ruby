@@ -19,11 +19,12 @@ if http
   puts "\n"
 end
 
+bmac="B2:B2:B3"
+NRF24::set_bmac bmac
+r0=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, chan:3, ack: false, mac: "00:A7:A7"
+r1=NRF24.new id: :toka, ce: 24,cs: 23, irq: 22, chan: 3, ack: false, mac: "00:A5:A5"
 
-r0=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, chan:3, ack: true
-r1=NRF24.new id: :toka, ce: 24,cs: 23, irq: 22, chan: 3, ack: true
-
-puts "Main Loop Starts:"
+puts "Main Loop Starts: bmac: #{NRF24::get_bmac}"
 
 loopc=0;
 sc=0;
@@ -36,10 +37,19 @@ loop do
     str.each_byte do |b|
       msg<<b
     end
-     if sc&1==0
-      r0.send_q << msg
-    else
-      r1.send_q << msg
+    if sc&2==0
+      if sc&1==0
+        r0.send_q << {msg: msg, tx_mac: bmac}
+      else
+        r1.send_q << {msg: msg, tx_mac: bmac}
+      end
+    else  
+      if sc&1==0
+        #r0.send_q << {msg: msg, tx_mac: r1.mac,ack:true}
+        r0.send_q << {msg: msg, tx_mac: "FF:A5:A5",ack:true}
+      else
+        r1.send_q << {msg: msg, tx_mac: r0.mac,ack:true}
+      end
     end
     NRF24::note "sent '#{str}' to #{sc&1}"
   end

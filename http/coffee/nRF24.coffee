@@ -39,11 +39,12 @@ update_status = (data) ->
 @build_regs = (regs) ->
   ret="<table>"
   for k,v of regs
-    ret+="<tr>"
-    ret+="<td >#{v.name}<td>"
-    ret+="<td id='d0r#{k}'>d0r#{k}<td>"
-    ret+="<td id='d1r#{k}'>d1r#{k}<td>"
-    ret+="</tr>"
+    if not v.hide
+      ret+="<tr>"
+      ret+="<td >#{v.name}<td>"
+      ret+="<td id='d0r#{k}'>d0r#{k}<td>"
+      ret+="<td id='d1r#{k}'>d1r#{k}<td>"
+      ret+="</tr>"
   ret+="</table>"
   $(".regs").html(ret)
   ret="<table>"

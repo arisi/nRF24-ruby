@@ -13,26 +13,30 @@ class NRF24
         
   @@regs={
     CONFIG:      {address: 0x00,len:7},
-    EN_AA:       {address: 0x01,len:5},
-    EN_RXADDR:   {address: 0x02,len:5},
-    SETUP_AW:    {address: 0x03},
+    EN_AA:       {address: 0x01,len:6},
+    EN_RXADDR:   {address: 0x02,len:6},
+    SETUP_AW:    {address: 0x03,len:2},
     SETUP_RETR:  {address: 0x04},
     RF_CH:       {address: 0x05,format: :dec},
     RF_SETUP:    {address: 0x06,len:4},
     STATUS:      {address: 0x07, poll: 1,len: 7},
     OBSERVE_TX:  {address: 0x08, poll: 1},
     CD:          {address: 0x09, poll: 1, len: 1},
-    RX_ADDR_P0:  {address: 0x0A, bytes: 5, format: :hex },
-    RX_ADDR_P1:  {address: 0x0B, bytes: 5, format: :hex },
-    RX_ADDR_P2:  {address: 0x0C, format: :hex},
-    RX_ADDR_P3:  {address: 0x0D, format: :hex},
-    RX_ADDR_P4:  {address: 0x0E, format: :hex},
-    RX_ADDR_P5:  {address: 0x0F, format: :hex},
-    TX_ADDR:     {address: 0x10, bytes: 5 , format: :hex},
-    RX_PW_P0:    {address: 0x11, format: :dec},
-    RX_PW_P1:    {address: 0x12, format: :dec},
+    RX_ADDR_P0:  {address: 0x0A, bytes: 3, format: :hex },
+    RX_ADDR_P1:  {address: 0x0B, bytes: 3, format: :hex },
+    RX_ADDR_P2:  {address: 0x0C, format: :hex,hide: true},
+    RX_ADDR_P3:  {address: 0x0D, format: :hex,hide: true},
+    RX_ADDR_P4:  {address: 0x0E, format: :hex,hide: true},
+    RX_ADDR_P5:  {address: 0x0F, format: :hex,hide: true},
+    TX_ADDR:     {address: 0x10, bytes: 3 , format: :hex},
+    RX_PW_P0:    {address: 0x11, format: :dec,hide: true},
+    RX_PW_P1:    {address: 0x12, format: :dec,hide: true},
+    RX_PW_P2:    {address: 0x13, format: :dec,hide: true},
+    RX_PW_P3:    {address: 0x14, format: :dec,hide: true},
+    RX_PW_P4:    {address: 0x15, format: :dec,hide: true},
+    RX_PW_P5:    {address: 0x16, format: :dec,hide: true},
     FIFO_STATUS: {address: 0x17, poll: 1, len:7},
-    DYNPD:       {address: 0x1C,len:5},
+    DYNPD:       {address: 0x1C,len:6}, 
     FEATURE:     {address: 0x1D,len:3},
   }
 
@@ -51,6 +55,12 @@ class NRF24
 
   @@sem=Mutex.new 
   @@log=[]
+  @@bmac="45:45:45:45:45"
+
+  def self.set_bmac mac
+    @@bmac=mac
+    puts "set bmac to #{mac}"
+  end
 
   def self.note str,*args
     begin
@@ -147,20 +157,22 @@ class NRF24
     [@s[:status]]
   end
 
-  def send packet
+  def send packet,hash={}
     pac=Array.new(@@PAYLOAD_SIZE, 0)
     packet.each_with_index do |byte,i|
       pac[i]=packet[i] if i<@@PAYLOAD_SIZE
     end
     @ce.off
     wreg :CONFIG,0x0a
-    if @s[:params]
+    if hash[:ack] and @s[:params][:ack]
       cmd :W_TX_PAYLOAD,pac
+      #puts "with ack"
     else
       cmd :W_TX_PAYLOAD_NOACK,pac
+      #puts "with NOack" 
     end
     @ce.on
-    sleep 0.0005
+    sleep 0.001
     @ce.off
     wreg :CONFIG,0x0b
     @ce.on
@@ -202,7 +214,9 @@ class NRF24
             @s[:sfail]+=1
           end
           if (d&0x01)==0x00
-           ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
+            pipe=(s>>1)&0x05
+            NRF24::note "pipe: #{pipe}"
+            ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
             @recv_q<<ret
             @s[:rcnt]+=1
             donesome=true
@@ -226,8 +240,10 @@ class NRF24
                 @s[:sarc]+=d&0x0f
               end
 
-              msg=@send_q.pop 
-              send msg 
+              msg=@send_q.pop
+              wreg :TX_ADDR,NRF24::mac2a(msg[:tx_mac]) 
+              #puts "send mac: #{msg[:tx_mac]}"
+              send msg[:msg], ack:msg[:ack]
               @s[:scnt]+=1
             end
           end
@@ -257,10 +273,14 @@ class NRF24
   end
 
   attr_accessor :rcnt,:scnt,:rfull
-  attr_accessor :send_q,:recv_q,:log
+  attr_accessor :send_q,:recv_q,:log,:mac
 
   def self.all_devices
     @@all
+  end
+
+  def self.get_bmac
+    @@bmac
   end
 
   def self.json
@@ -287,6 +307,14 @@ class NRF24
     @@log
   end
 
+  def self.mac2a mac
+    a=[]
+    mac.split(":").each do |b|
+      a<<b.hex
+    end
+    a
+  end
+
   def hw_init hash
     @s={
       stamp: 0,
@@ -308,27 +336,46 @@ class NRF24
     wreg :RF_CH,hash[:chan]||2
     if hash[:ack]
       wreg :SETUP_RETR,0x8f
-      wreg :EN_AA,0x7f
-      wreg :DYNPD,0x03
-      wreg :FEATURE,0x00
+      wreg :EN_AA,0x3e # no acks on broadcast
     else
       wreg :SETUP_RETR,0x00
       wreg :EN_AA,0x00
-      wreg :DYNPD,0x00
-      wreg :FEATURE,0x01
     end
-    wreg :SETUP_AW,0x03
+    wreg :FEATURE,0x01
+    wreg :SETUP_AW,0x01
+    wreg :DYNPD,0x00
     wreg :STATUS,0x70
+    wreg :EN_RXADDR,0x3f
     wreg :RX_PW_P0,@@PAYLOAD_SIZE
     wreg :RX_PW_P1,@@PAYLOAD_SIZE
-    wreg :TX_ADDR,[0x12,0x34,0x56,0x78,0x9a]
-    wreg :RX_ADDR_P0,[0x12,0x34,0x56,0x78,0x9a]
-
-    if hash[:ack]
-      cmd :ACTIVATE,[ 0]
+    wreg :RX_PW_P2,@@PAYLOAD_SIZE
+    wreg :RX_PW_P3,@@PAYLOAD_SIZE
+    wreg :RX_PW_P4,@@PAYLOAD_SIZE
+    wreg :RX_PW_P5,@@PAYLOAD_SIZE
+    wreg :TX_ADDR,NRF24::mac2a(@@bmac)
+    wreg :RX_ADDR_P0,NRF24::mac2a(@@bmac)
+    wreg :RX_ADDR_P2,0xfc
+    wreg :RX_ADDR_P3,0xfd
+    wreg :RX_ADDR_P4,0xfe
+    wreg :RX_ADDR_P5,0xff
+    if hash[:mac] #keep old if not defined
+      wreg :RX_ADDR_P1,NRF24::mac2a(hash[:mac]) 
+      @mac=hash[:mac]
     else
-      cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
+      s,d,bytes,code =rreg :RX_ADDR_P1
+      mac=""
+      d.each do |b|
+        mac+=":" if mac!=""
+        mac+=sprintf "%02X",b
+      end
+      @mac=mac
     end
+
+#    if hash[:ack]
+ #     cmd :ACTIVATE,[ 0]
+  #  else
+      cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
+   # end
 
     cmd :FLUSH_TX
     cmd :FLUSH_RX
