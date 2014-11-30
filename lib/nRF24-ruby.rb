@@ -3,14 +3,16 @@
 
 require 'pp'
 require 'thread'
+require 'time'
 require 'pi_piper'
+require 'zlib'
 include PiPiper
 
 class NRF24
   @@all=[]
   @@PAYLOAD_SIZE=32
   @@SPI_CLOCK=250000
-        
+
   @@regs={
     CONFIG:      {address: 0x00,len:7},
     EN_AA:       {address: 0x01,len:6},
@@ -36,7 +38,7 @@ class NRF24
     RX_PW_P4:    {address: 0x15, format: :dec,hide: true},
     RX_PW_P5:    {address: 0x16, format: :dec,hide: true},
     FIFO_STATUS: {address: 0x17, poll: 1, len:7},
-    DYNPD:       {address: 0x1C,len:6}, 
+    DYNPD:       {address: 0x1C,len:6},
     FEATURE:     {address: 0x1D,len:3},
   }
 
@@ -53,13 +55,12 @@ class NRF24
     ACTIVATE2:  0x73,
   }
 
-  @@sem=Mutex.new 
+  @@sem=Mutex.new
   @@log=[]
   @@bmac="45:45:45:45:45"
 
   def self.set_bmac mac
     @@bmac=mac
-    puts "set bmac to #{mac}"
   end
 
   def self.note str,*args
@@ -72,7 +73,7 @@ class NRF24
       puts "note dies: #{e} '#{str}'"
     end
   end
-  
+
   def get_ccode c
     ccode=@@cmds[c]
     if not ccode
@@ -95,8 +96,8 @@ class NRF24
     status=0
     cc=get_ccode(c)
     @@sem.synchronize do
-      @cs.off 
-      PiPiper::Spi.begin do 
+      @cs.off
+      PiPiper::Spi.begin do
         clock(@@SPI_CLOCK)
         status=write cc
         data.each do |byte|
@@ -116,14 +117,14 @@ class NRF24
     cc=get_ccode(:R_REGISTER) +i
     @@sem.synchronize do
       @cs.off
-      PiPiper::Spi.begin do 
+      PiPiper::Spi.begin do
         clock(@@SPI_CLOCK)
         status=write cc
         if bytes==1
           data=write(0xff)
         else
           data=[]
-          bytes.times do 
+          bytes.times do
             data << write(0xff)
           end
         end
@@ -157,6 +158,16 @@ class NRF24
     [@s[:status]]
   end
 
+  def calc_crc str
+    checksum=0
+    str.unpack("c*").each do |c|
+      checksum+=c.ord
+    end
+    checksum&=0xff
+    #puts "cc calc: '#{str}'' -> #{checksum}"
+    return checksum
+  end
+
   def send packet,hash={}
     pac=Array.new(@@PAYLOAD_SIZE, 0)
     packet.each_with_index do |byte,i|
@@ -166,7 +177,8 @@ class NRF24
     wreg :CONFIG,0x0a
     #prepend our mac?
     if @s[:params][:mac_header]
-      pac= NRF24::mac2a(@mac, short:true)+pac
+      checksum= calc_crc(pac.pack("c*"))
+      pac= NRF24::mac2a(@mac, short:true)+[checksum]+pac
       pac=pac[0...32]
     end
     if hash[:ack] and @s[:params][:ack]
@@ -179,13 +191,6 @@ class NRF24
     @ce.off
     wreg :CONFIG,0x0b
     @ce.on
-  end
-
-  def recv 
-    fifo_status,_=rreg :FIFO_STATUS
-    if (fifo_status & 0x01) == 0x01
-      puts "on dataa"
-    end
   end
 
   def get_regs all
@@ -201,22 +206,23 @@ class NRF24
       begin
         loop do
           donesome=false
-
+          cflag=0
           s,d,b=rreg :FIFO_STATUS
           if (s&0x40) == 0x40
             #NRF24::note "got RX_DR --received something"
-            wreg :STATUS,0x40
+            cflag|=0x40
           end
           if (s&0x20) == 0x20
             #NRF24::note "got TX_DS --sent something"
             wreg :STATUS,0x20
+            cflag|=0x20
           end
           if (s&0x10) == 0x10
             NRF24::note "****************** got MAX_RT --send fails..."
-            wreg :STATUS,0x10
+            cflag|=0x10
             @s[:sfail]+=1
           end
-
+          wreg(:STATUS,cflag) if cflag>0
           while (d&0x01)==0x00
             @s[:rfull]+=1 if (d&0x02)==0x02
             pipe=(s>>1)&0x05
@@ -228,10 +234,18 @@ class NRF24
             ret=cmd :R_RX_PAYLOAD,Array.new(@@PAYLOAD_SIZE, 0xff)
             if @s[:params][:mac_header]
               sender=NRF24::a2mac(ret[0..1])
-              ret.shift
-              ret.shift
+              checksum=ret[2]
+              ret.shift(3)
+              check= calc_crc(ret.pack("c*"))
+              if check!=checksum
+                puts "Error: Checksum error! Message Ignored!"
+                s,d,b=rreg :FIFO_STATUS
+                next
+              end
             end
-            @recv_q<<{msg:ret,socket:socket,from:sender,to:@mac,dir: :in}
+            msg={msg:ret,socket:socket,from:sender,to:@mac,dir: :in,checksum:checksum,check:check}
+            @recv_q << msg
+            NRF24::note "i #{msg}"
             @s[:rcnt]+=1
             s,d,b=rreg :FIFO_STATUS
             donesome=true
@@ -258,7 +272,7 @@ class NRF24
               msg[:from]=@mac
               msg[:dir]=:out
               send msg[:msg], ack:msg[:ack]
-              msg[:msg]=msg[:msg].pack("c*")
+              #msg[:msg]=msg[:msg].pack("c*")
               NRF24::note "o #{msg}"
               @s[:scnt]+=1
             end
@@ -315,11 +329,11 @@ class NRF24
     @@regs
   end
 
-  def json 
+  def json
     @s
   end
 
-  def self.get_log 
+  def self.get_log
     @@log
   end
 
@@ -353,7 +367,7 @@ class NRF24
       scnt: 0,
       sarc: 0,
       sfail: 0,
-    } 
+    }
     @id=hash[:id]
     wreg :CONFIG,0x0b
     rf_dr=(hash[:rf_dr]||1).to_i&0x01
@@ -381,37 +395,27 @@ class NRF24
     wreg :RX_PW_P5,@@PAYLOAD_SIZE
     wreg :TX_ADDR,NRF24::mac2a(@@bmac)
     wreg :RX_ADDR_P0,NRF24::mac2a(@@bmac)
-    
+
     if hash[:mac] #keep old if not defined
-      wreg :RX_ADDR_P1,NRF24::mac2a(hash[:mac]) 
+      wreg :RX_ADDR_P1,NRF24::mac2a(hash[:mac])
       @mac=hash[:mac]
     else
-      s,d,bytes,code =rreg :RX_ADDR_P1
-      mac=""
-      d.each do |b|
-        mac+=":" if mac!=""
-        mac+=sprintf "%02X",b
-      end
-      @mac=mac
+
     end
     wreg :RX_ADDR_P2,1
     wreg :RX_ADDR_P3,2
     wreg :RX_ADDR_P4,3
     wreg :RX_ADDR_P5,4
-#    if hash[:ack]
- #     cmd :ACTIVATE,[ 0]
-  #  else
-      cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
-   # end
+    cmd :ACTIVATE,[ get_ccode(:ACTIVATE2)]
 
     cmd :FLUSH_TX
     cmd :FLUSH_RX
   end
 
   def initialize(hash={})
-    @semh=Mutex.new 
+    @semh=Mutex.new
 
-   
+
     @ce=PiPiper::Pin.new(:pin => hash[:ce], :direction => :out)
     @cs=PiPiper::Pin.new(:pin => hash[:cs], :direction => :out)
 
@@ -424,7 +428,8 @@ class NRF24
 
     hw_init hash
 
-    @server_t=rf_server 
+    @server_t=rf_server
+    @server_t.priority=100
     @monitor_t=do_monitor
   end
 end

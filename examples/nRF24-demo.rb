@@ -11,6 +11,7 @@ end
 puts "\nPure Ruby nRF24L01 Driver Starting..."
 
 http=true
+#http=false
 
 if http
   puts "Loading Http-server.. hold on.."
@@ -21,18 +22,19 @@ end
 
 bmac="C7:C7:C7"
 NRF24::set_bmac bmac
-r0=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, chan:3, ack: false, mac: "A7:A7",mac_header: true
-r1=NRF24.new id: :toka, ce: 24,cs: 23, irq: 22, chan: 3, ack: false, mac: "A5:A5",mac_header: true
+r0=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, chan:4, ack: false, mac: "A7:A7",mac_header: true
+r1=NRF24.new id: :toka, ce: 24,cs: 23, irq: 22, chan: 4, ack: false, mac: "A5:A5",mac_header: true
 
 puts "Main Loop Starts: bmac: #{NRF24::get_bmac}"
 
 loopc=0;
 sc=0;
-
+lista=[]
 loop do
   if (loopc%4)==0
     msg=[]
-    str=sprintf "TEST:%5.5d",sc
+    str=sprintf "%5.5d",sc
+    lista<<sc
     sc+=1
     str.each_byte do |b|
       msg<<b
@@ -51,7 +53,7 @@ loop do
         r1.send_q << {msg: msg, to: r0.mac, socket: 4,ack:true}
       end
     end
-    #NRF24::note "sent '#{str}' to #{sc&1}"
+    NRF24::note "lista:#{lista.size}"
   end
   loopc+=1
   while not r1.recv_q.empty?
@@ -60,9 +62,12 @@ loop do
     msg=""
     len=0
     got[:msg].each_with_index do |b,i|
-      msg[i]=b.chr if b!=0x00
+      break  if b==0x00
+      msg[i]=b.chr 
     end
     got[:msg]=msg
+    s=got[:msg].to_i
+    lista-=[s]
     NRF24::note "i #{got}"
   end
   while not r0.recv_q.empty?
@@ -74,12 +79,19 @@ loop do
       msg[i]=b.chr if b!=0x00
     end
     got[:msg]=msg
+    s=got[:msg].to_i
+    lista-=[s]
     NRF24::note "i #{got}"
   end
   if not http
-    pp r0.json
-    pp r1.json
+   if NRF24::get_log.size>0
+      e=NRF24::get_log[0]
+      if e[:text][/lista/]
+        puts e
+      end
+      NRF24::get_log.shift
+   end
   end
-  sleep 0.01
+  sleep 0.05
 end
 

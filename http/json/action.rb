@@ -20,7 +20,7 @@ def json_action request,args,session,event
 	    d.get_regs true
 	  else
 	  	puts "initing #{d}"
-	  	d.hw_init chan: chan, ack: aa, rf_dr: args['rf_dr'], rf_pwr: args['rf_pwr'], lna_hcurr: args['lna_hcurr']
+	  	d.hw_init chan: chan, ack: aa, rf_dr: args['rf_dr'], rf_pwr: args['rf_pwr'], lna_hcurr: args['lna_hcurr'],mac_header: true
 	  	d.get_regs true
 	  end
   end
