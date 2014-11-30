@@ -370,6 +370,11 @@ class NRF24
     }
     @id=hash[:id]
     wreg :CONFIG,0x0b
+    _,check,_=rreg :CONFIG
+    if check!=0x0b
+      puts "No nRF24 Found [#{check}] @(cs:#{hash[:cs]}, ce:#{hash[:ce]}, mosi: 10, miso: 9, sckl: 11)! - Aborting"
+      exit(-1)
+    end
     rf_dr=(hash[:rf_dr]||1).to_i&0x01
     rf_pwr=(hash[:rf_pwr]||3).to_i&0x03
     lna_hcurr=(hash[:lna_hcurr]||1).to_i&0x01
