@@ -1,8 +1,67 @@
 #!/usr/bin/env ruby
 #encoding: UTF-8
 
+require 'optparse'
+
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: #{$PROGRAM_NAME} [options]"
+
+  opts.on("-v", "--[no-]verbose", "Run verbosely; creates protocol log on console (false)") do |v|
+    options[:verbose] = v
+  end
+  opts.on("-d", "--[no-]debug", "Produce Debug dump on verbose log (false)") do |v|
+    options[:debug] = v
+  end
+  options[:broker_uri] = "udp://localhost:1883"
+  opts.on("-b", "--broker uri", "URI of the MQTT-SN Broker to connect to (udp://localhost:1883)") do |v|
+    options[:broker_uri] = v
+  end
+    options[:mac] = "AA:AA"
+  opts.on("-m", "--mac mac", "This radio station's MAC (AA:AA)") do |v|
+    options[:mac] = v
+  end
+
+  options[:gw_id] = 111
+  opts.on("-i", "--id GwId", "MQTT-SN gw_id of this Station (111)") do |v|
+    options[:gw_id] = v.to_i
+  end
+
+  options[:cs] = 27
+  opts.on("-S","--cs n", "RaspberryPi Pin number for nRF24's CS (27)") do |v|
+    options[:cs] = v.to_i
+  end
+
+  options[:chan] = 2
+  opts.on("--rf n", "nRF24 radio channel number [0..125] (2)") do |v|
+    options[:chan] = v.to_i
+  end
+
+  options[:rf_dr] = 0
+  opts.on("--dr n", "nRF24 radio Data Rate [1,2] Mbps (2)") do |v|
+    options[:rf_dr] = 1 if v.to_i==2
+  end
+
+  options[:ce] = 22
+  opts.on("-E","--ce n", "RaspberryPi Pin number for nRF24's CE (22)") do |v|
+    options[:ce] = v.to_i
+  end
+
+  options[:irq] = 17
+  opts.on("--irq n", "RaspberryPi Pin number for nRF24's IRQ (17)") do |v|
+    options[:irq] = v.to_i
+  end
+
+  opts.on("-h", "--http port", "Http port for debug/status JSON server (false)") do |v|
+    options[:http_port] = v.to_i
+  end
+end.parse!
+
 
 require "pp"
+
+pp options
 require 'socket'
 require 'json'
 require 'uri'
@@ -22,19 +81,6 @@ end
 
 puts "\nPure Ruby nRF24 <-> UDP MQTT-SN Bridge Starting..."
 
-http=true
-#http=false
-
-if http
-  puts "Loading Http-server.. hold on.."
-  require 'minimal-http-ruby'
-  if local
-    minimal_http_server http_port: 8088, http_path:  './http/'
-  else
-    minimal_http_server http_port: 8088, http_path:  File.join( Gem.loaded_specs['nRF24-ruby'].full_gem_path, 'http/')
-  end
-  puts "\n"
-end
 
 def open_port uri_s
   begin
@@ -110,6 +156,72 @@ def poll_packet_radio r
   return nil
 end
 
+
+
+@gateways={}
+@active_gw_id=nil
+@gsem=Mutex.new
+
+def add_gateway gw_id,hash
+  if not @gateways[gw_id]
+     @gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
+  else
+    if @gateways[gw_id][:uri]!=hash[:uri]
+      note "conflict -- gateway has moved? or duplicate"
+    else
+      @gateways[gw_id][:stamp]=Time.now.to_i
+      @gateways[gw_id]=@gateways[gw_id].merge hash
+    end
+  end
+end
+
+def gateway_close cause
+  @gsem.synchronize do #one command at a time --
+
+    if @active_gw_id # if using one, mark it used, so it will be last reused
+      note "Closing gw #{@active_gw_id} cause: #{cause}"
+      @gateways[@active_gw_id][:last_use]=Time.now.to_i
+      if @gateways[@active_gw_id][:socket]
+        @gateways[@active_gw_id][:socket].close
+        @gateways[@active_gw_id][:socket]=nil
+      end
+      @active_gw_id=nil
+    end
+  end
+end
+
+def pick_new_gateway
+  begin
+    gateway_close nil
+    @gsem.synchronize do #one command at a time --
+      pick=nil
+      pick_t=0
+      @gateways.each do |gw_id,data|
+        if data[:uri] and data[:status]==:ok
+          if not pick or data[:last_use]==0  or pick_t>data[:last_use]
+            pick=gw_id
+            pick_t=data[:last_use]
+          end
+        end
+      end
+      if pick
+        @active_gw_id=pick
+        NRF24::note "Opening Gateway #{@active_gw_id}: #{@gateways[@active_gw_id][:uri]}"
+        #@s,@server,@port = MqttSN::open_port @gateways[@active_gw_id][:uri]
+        #@gateways[@active_gw_id][:socket]=@s
+        @gateways[@active_gw_id][:last_use]=Time.now.to_i
+      else
+        #note "Error: no usable gw found !!"
+      end
+    end
+  rescue => e
+    puts "Error: receive thread died: #{e}"
+    pp e.backtrace
+  end
+  return @active_gw_id
+end
+
+
 @bcast_mac="45:45:45"
 @bcast_period=20
 
@@ -120,14 +232,16 @@ puts "Gateway Main Loop Starts:"
 MAX_IDLE=120
 
 #this needs to be Class...
-def forwarder r0, broker_uri
-
-  uri = URI.parse(broker_uri)
+def forwarder r0, hash={}
+  add_gateway(0,{uri: hash[:broker_uri],source: "default"})
+  pick_new_gateway
+  pp @gateways
+  uri = URI.parse(hash[:broker_uri])
   if uri.scheme== 'udp'
     @broker_host=uri.host
     @broker_port=uri.port
   else
-    raise "Error: Cannot open socket for '#{broker_uri}', unsupported scheme: '#{uri.scheme}'"
+    raise "Error: Cannot open socket for '#{hash[:broker_uri]}', unsupported scheme: '#{uri.scheme}'"
   end
 
   last_kill=0
@@ -135,7 +249,7 @@ def forwarder r0, broker_uri
   Thread.new do
     loop do
       begin
-        msg=[MqttSN::ADVERTISE_TYPE,222,@bcast_period>>8,@bcast_period&0xff]
+        msg=[MqttSN::ADVERTISE_TYPE,hash[:gw_id],@bcast_period>>8,@bcast_period&0xff]
         r = MqttSN::build_packet msg
         send_raw_packet r,r0,@bcast_mac,0
         puts "adv: #{msg} "
@@ -153,6 +267,12 @@ def forwarder r0, broker_uri
         sleep 1
         now=Time.now.to_i
         changes=false
+        @gateways.dup.each do |key,data|
+          if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
+            puts "***********************************gw lost #{key}"
+            @gateways.delete key
+          end
+        end
         @clients.dup.each do |key,data|
           if data[:state]==:disconnected
             dest="#{data[:ip]}:#{data[:port]}"
@@ -184,6 +304,20 @@ def forwarder r0, broker_uri
         r,client_ip,client_port=pac
         key="#{client_ip}:#{client_port}"
         if not @clients[key]
+          if client_port== :broadcast
+            puts "gw ignoring adv #{pac}"
+            m=MqttSN::parse_message r
+            puts "bcast! -- we handle it! #{m}"
+            gw_id=m[:gw_id]
+            duration=m[:duration]||180
+            uri="rad://#{client_ip}"
+            add_gateway(gw_id,{uri: uri, source: m[:type], duration:duration,stamp: Time.now.to_i})
+            now=Time.now.to_i
+            @gateways.each do |k,v|
+              puts "gw: #{k} , #{now-v[:stamp]}, #{v[:uri]}"
+            end
+            next
+          end
           uri="rad://#{client_ip}:#{client_port}"
           @clients[key]={ip:client_ip, port:client_port, socket: UDPSocket.new, uri: uri, state: :active, counter_send:0, last_send:0 , counter_recv:0, last_recv:0}
           c=@clients[key]
@@ -242,13 +376,14 @@ def forwarder r0, broker_uri
         @clients[key][:counter_recv]+=1
         begin
           if @active_gw_id
-            logger "cs %-24.24s -> %-24.24s | %s", @clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
+            printf "cs %-24.24s -> %-24.24s | %s\n", @clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
           else
             printf "cs %-24.24s -> %-24.24s | %s\n", @clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
             NRF24::note "cs %-24.24s -> %-24.24s | %s", @clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
           end
         rescue Exception =>e
-          puts "logging fails #{e}"
+          puts "main loop fails #{e}"
+          pp e.backtrace
         end
       end
     rescue => e
@@ -271,10 +406,22 @@ def kill_client key
   end
 end
 
-@radio=NRF24.new id: :eka, ce: 22,cs: 27, irq: 17, chan:4, ack: false, mac: "A9:A9",mac_header: true
+
+if options[:http_port]
+  puts "Loading Http-server.. hold on.."
+  require 'minimal-http-ruby'
+  if local
+    minimal_http_server http_port: options[:http_port], http_path:  './http/'
+  else
+    minimal_http_server http_port: options[:http_port], http_path:  File.join( Gem.loaded_specs['nRF24-ruby'].full_gem_path, 'http/')
+  end
+  puts "\n"
+end
+
+@radio=NRF24.new options.merge(id: :eka, ack: false, mac_header: true)
 
 begin
-  forwarder @radio,"udp://20.20.20.21:1882"
+  forwarder @radio,options
 rescue SystemExit, Interrupt
   puts "\nExiting after Disconnect\n"
 rescue => e
