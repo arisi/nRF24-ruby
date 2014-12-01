@@ -117,8 +117,76 @@ puts "Main Loop Starts:"
 loopc=0;
 sc=0;
 
+@gateways={}
+@active_gw_id=nil
+ @gsem=Mutex.new
+
+def add_gateway gw_id,hash
+  if not @gateways[gw_id]
+     @gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
+  else
+    if @gateways[gw_id][:uri]!=hash[:uri]
+      note "conflict -- gateway has moved? or duplicate"
+    else
+      @gateways[gw_id][:stamp]=Time.now.to_i
+      @gateways[gw_id]=@gateways[gw_id].merge hash
+    end
+  end
+end
+
+def gateway_close cause
+  @gsem.synchronize do #one command at a time --
+
+    if @active_gw_id # if using one, mark it used, so it will be last reused
+      note "Closing gw #{@active_gw_id} cause: #{cause}"
+      @gateways[@active_gw_id][:last_use]=Time.now.to_i
+      if @gateways[@active_gw_id][:socket]
+        @gateways[@active_gw_id][:socket].close
+        @gateways[@active_gw_id][:socket]=nil
+      end
+      @active_gw_id=nil
+    end
+  end
+end
+
+def pick_new_gateway
+  begin
+    gateway_close nil
+    @gsem.synchronize do #one command at a time --
+      pick=nil
+      pick_t=0
+      @gateways.each do |gw_id,data|
+        if data[:uri] and data[:status]==:ok
+          if not pick or data[:last_use]==0  or pick_t>data[:last_use]
+            pick=gw_id
+            pick_t=data[:last_use]
+          end
+        end
+      end
+      if pick
+        @active_gw_id=pick
+        NRF24::note "Opening Gateway #{@active_gw_id}: #{@gateways[@active_gw_id][:uri]}"
+        #@s,@server,@port = MqttSN::open_port @gateways[@active_gw_id][:uri]
+        #@gateways[@active_gw_id][:socket]=@s
+        @gateways[@active_gw_id][:last_use]=Time.now.to_i
+      else
+        #note "Error: no usable gw found !!"
+      end
+    end
+  rescue => e
+    puts "Error: receive thread died: #{e}"
+    pp e.backtrace
+  end
+  return @active_gw_id
+end
+
 
 #CLIENT HERE
+@server_uri="rad://A9:A9"
+add_gateway(0,{uri: @server_uri,source: "default"})
+pick_new_gateway
+pp @gateways
+
 GW="A9:A9"
 loop do
   begin
@@ -132,8 +200,13 @@ loop do
       msg,client_ip,client_port=pac
       puts "RAD(#{client_ip}:#{client_port})->UDP(#{@client_ip}:#{@client_port}): #{pac}"
       if client_port==:broadcast
-        mm=MqttSN::parse_message msg
-        puts "bcast! -- we handle it! #{mm}"
+        m=MqttSN::parse_message msg
+        puts "bcast! -- we handle it! #{m}"
+        gw_id=m[:gw_id]
+        duration=m[:duration]||180
+        uri="rad://#{client_ip}"
+        add_gateway(gw_id,{uri: uri, source: m[:type], duration:duration,stamp: Time.now.to_i})
+        pp @gateways
       else
         send_raw_packet msg,s,@client_ip,@client_port
       end
