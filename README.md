@@ -30,8 +30,3 @@ nRF24 | Rpi | Function | Rpi Name
 1 | 25 | GND | GND
 
 
-
-First Header  | Second Header
-------------- | -------------
-Content Cell  | Content Cell
-Content Cell  | Content Cell
