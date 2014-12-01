@@ -19,7 +19,7 @@ and then
 Connect the radio module as follows (you can move CE and CS around, others are fixed):
 
 nRF24 | Rpi | Function | Rpi Name
-- | - | - | -
+------ | ----- | ----- | -----
 8 | 11 | IRQ | GPIO17
 3 | 13 | CE | GPIO27
 4 | 15 | CS | GPIO22
