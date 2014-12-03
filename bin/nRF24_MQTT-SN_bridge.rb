@@ -2,9 +2,21 @@
 #encoding: UTF-8
 
 require 'optparse'
-
+require 'yaml'
+require "pp"
 
 options = {}
+
+options=options.merge YAML::load_file('/etc/nRF24.conf')
+options=options.inject({}){|memo,(k,v)| memo[k.to_sym] = v; memo}
+
+options[:cs] = 22 if not options[:cs]
+options[:ce] = 27 if not options[:ce]
+options[:irq] = 17 if not options[:irq]
+options[:local_port] = 5555 if not options[:local_port]
+options[:rf_dr] = 0 if not options[:rd_dr]
+options[:chan] = 2 if not options[:chan]
+
 OptionParser.new do |opts|
   opts.banner = "Usage: #{$PROGRAM_NAME} [options]"
 
@@ -14,41 +26,33 @@ OptionParser.new do |opts|
   opts.on("-d", "--[no-]debug", "Produce Debug dump on verbose log (false)") do |v|
     options[:debug] = v
   end
-  options[:broker_uri] = "udp://localhost:1883"
   opts.on("-b", "--broker uri", "URI of the MQTT-SN Broker to connect to (udp://localhost:1883)") do |v|
     options[:broker_uri] = v
   end
-    options[:mac] = "AA:AA"
   opts.on("-m", "--mac mac", "This radio station's MAC (AA:AA)") do |v|
     options[:mac] = v
   end
 
-  options[:gw_id] = 111
   opts.on("-i", "--id GwId", "MQTT-SN gw_id of this Station (111)") do |v|
     options[:gw_id] = v.to_i
   end
 
-  options[:cs] = 27
   opts.on("-S","--cs n", "RaspberryPi Pin number for nRF24's CS (27)") do |v|
     options[:cs] = v.to_i
   end
 
-  options[:chan] = 2
   opts.on("--rf n", "nRF24 radio channel number [0..125] (2)") do |v|
     options[:chan] = v.to_i
   end
 
-  options[:rf_dr] = 0
   opts.on("--dr n", "nRF24 radio Data Rate [1,2] Mbps (2)") do |v|
     options[:rf_dr] = 1 if v.to_i==2
   end
 
-  options[:ce] = 22
   opts.on("-E","--ce n", "RaspberryPi Pin number for nRF24's CE (22)") do |v|
     options[:ce] = v.to_i
   end
 
-  options[:irq] = 17
   opts.on("--irq n", "RaspberryPi Pin number for nRF24's IRQ (17)") do |v|
     options[:irq] = v.to_i
   end
@@ -60,8 +64,14 @@ end.parse!
 
 
 require "pp"
-
 pp options
+
+if  not options[:gw_id]
+  puts "Error: gw_id must be specified!"
+  exit -1
+end
+
+
 require 'socket'
 require 'json'
 require 'uri'
