@@ -17,7 +17,6 @@ options[:local_port] = 5555 if not options[:local_port]
 options[:rf_dr] = 0 if not options[:rd_dr]
 options[:chan] = 2 if not options[:chan]
 
-options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: #{$PROGRAM_NAME} [options]"
 
@@ -43,7 +42,6 @@ OptionParser.new do |opts|
   opts.on("-S","--cs n", "RaspberryPi Pin number for nRF24's CS (27)") do |v|
     options[:cs] = v.to_i
   end
-
 
   opts.on("--rf n", "nRF24 radio channel number [0..125] (2)") do |v|
     options[:chan] = v.to_i
