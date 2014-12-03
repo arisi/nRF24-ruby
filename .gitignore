@@ -1,3 +1,5 @@
+config/deploy/*
+config/deploy.rb
 *.gem
 *.raw
 *.mp3
