@@ -6,8 +6,9 @@ require 'yaml'
 require "pp"
 
 options = {}
+CONF_FILE='/etc/nRF24.conf'
 
-options=options.merge YAML::load_file('/etc/nRF24.conf')
+options=options.merge YAML::load_file(CONF_FILE) if File.exist?(CONF_FILE)
 options=options.inject({}){|memo,(k,v)| memo[k.to_sym] = v; memo}
 
 options[:cs] = 22 if not options[:cs]
