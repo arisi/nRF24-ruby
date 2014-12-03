@@ -19,7 +19,7 @@ Eye.application "#{app}" do
     notify :dev
     notify :errors
     auto_start  false
-    start_command "ruby ./bin/#{daemon}.rb -S 22 -E 27 --http 8088 --mac 'EE:EE' --dr 1 -vd"
+    start_command "sudo ruby ./bin/#{daemon}.rb -S 22 -E 27 --http 8088 --mac 'EE:EE' --dr 1 -vd"
     daemonize true
     pid_file "/tmp/#{daemon}.pid"
   end
@@ -29,7 +29,7 @@ Eye.application "#{app}" do
     notify :dev
     notify :errors
     auto_start  false
-    start_command "ruby ./bin/#{daemon}.rb -S 22 -E 27 --id 33 --mac 'EE:EE' --broker udp://20.20.20.21:1883 --dr 1"
+    start_command "sudo ruby ./bin/#{daemon}.rb -S 22 -E 27 --id 33 --mac 'EE:EE' --broker udp://20.20.20.21:1883 --dr 1"
     daemonize true
     pid_file "/tmp/#{daemon}.pid"
   end
