@@ -10,7 +10,8 @@ require 'time'
 require 'pi_piper'
 require 'zlib'
 include PiPiper
-123
+
+
 class NRF24
   @@all=[]
   @@PAYLOAD_SIZE=32
