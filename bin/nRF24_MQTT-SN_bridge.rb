@@ -166,8 +166,9 @@ def add_gateway gw_id,hash
   if not @gateways[gw_id]
      @gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
   else
+    @gateways[gw_id][:status]=:ok
     if @gateways[gw_id][:uri]!=hash[:uri]
-      note "conflict -- gateway has moved? or duplicate"
+      puts "conflict -- gateway has moved? or duplicate"
     else
       @gateways[gw_id][:stamp]=Time.now.to_i
       @gateways[gw_id]=@gateways[gw_id].merge hash
@@ -179,7 +180,7 @@ def gateway_close cause
   @gsem.synchronize do #one command at a time --
 
     if @active_gw_id # if using one, mark it used, so it will be last reused
-      note "Closing gw #{@active_gw_id} cause: #{cause}"
+      puts "Closing gw #{@active_gw_id} cause: #{cause}"
       @gateways[@active_gw_id][:last_use]=Time.now.to_i
       if @gateways[@active_gw_id][:socket]
         @gateways[@active_gw_id][:socket].close
@@ -269,8 +270,11 @@ def forwarder r0, hash={}
         changes=false
         @gateways.dup.each do |key,data|
           if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
-            puts "***********************************gw lost #{key}"
-            @gateways.delete key
+            puts "***********************************gw lost #{key} #{data},#{now}"
+            @gateways[key][:status]=:fail
+            if key==@active_gw_id
+              gateway_close "timeout"
+            end
           end
         end
         @clients.dup.each do |key,data|
@@ -305,23 +309,21 @@ def forwarder r0, hash={}
         key="#{client_ip}:#{client_port}"
         if not @clients[key]
           if client_port== :broadcast
-            puts "gw ignoring adv #{pac}"
             m=MqttSN::parse_message r
-            puts "bcast! -- we handle it! #{m}"
             gw_id=m[:gw_id]
             duration=m[:duration]||180
             uri="rad://#{client_ip}"
             add_gateway(gw_id,{uri: uri, source: m[:type], duration:duration,stamp: Time.now.to_i})
             now=Time.now.to_i
-            @gateways.each do |k,v|
-              puts "gw: #{k} , #{now-v[:stamp]}, #{v[:uri]}"
-            end
+            #@gateways.each do |k,v|
+            #  puts "gw: #{k} , #{now-v[:stamp]}, #{v[:uri]}"
+            #end
             next
           end
           uri="rad://#{client_ip}:#{client_port}"
           @clients[key]={ip:client_ip, port:client_port, socket: UDPSocket.new, uri: uri, state: :active, counter_send:0, last_send:0 , counter_recv:0, last_recv:0}
           c=@clients[key]
-          puts "thread start for #{key}"
+          #puts "thread start for #{key}"
 
           @clients[key][:thread]=Thread.new(key) do |my_key|
             while true
@@ -375,14 +377,15 @@ def forwarder r0, hash={}
         @clients[key][:last_recv]=Time.now.to_i
         @clients[key][:counter_recv]+=1
         begin
-          if @active_gw_id
+          if @active_gw_id and @gateways[@active_gw_id]
             printf "cs %-24.24s -> %-24.24s | %s\n", @clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
+            NRF24::note  "cs %-24.24s -> %-24.24s | %s", @clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
           else
             printf "cs %-24.24s -> %-24.24s | %s\n", @clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
             NRF24::note "cs %-24.24s -> %-24.24s | %s", @clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
           end
         rescue Exception =>e
-          puts "main loop fails #{e}"
+          puts "Error: main loop fails #{e}"
           pp e.backtrace
         end
       end

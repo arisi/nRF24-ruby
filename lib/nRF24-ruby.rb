@@ -66,7 +66,8 @@ class NRF24
   def self.note str,*args
     begin
       s=sprintf(str,*args)
-      text=sprintf("%s: %s",Time.now.iso8601,s)
+      now=Time.now
+      text=sprintf("%s.%.s: %s",(now.iso8601).gsub(/:|-|Z|\+.+/,'').gsub(/T/,' ')+"."+("%03d" % (now.usec.to_i/1000)),s)
       @@log << {stamp: Time.now.to_i, text: text.encode("UTF-8", :invalid=>:replace, :replace=>"?")}
     rescue => e
       pp e.backtrace
@@ -245,7 +246,7 @@ class NRF24
             end
             msg={msg:ret,socket:socket,from:sender,to:@mac,dir: :in,checksum:checksum,check:check}
             @recv_q << msg
-            NRF24::note "i #{msg}"
+            NRF24::note "i #{msg}"  if msg[:socket]!=:broadcast
             @s[:rcnt]+=1
             s,d,b=rreg :FIFO_STATUS
             donesome=true
@@ -273,7 +274,7 @@ class NRF24
               msg[:dir]=:out
               send msg[:msg], ack:msg[:ack]
               #msg[:msg]=msg[:msg].pack("c*")
-              NRF24::note "o #{msg}"
+              NRF24::note "o #{msg}"  if msg[:socket]!=:broadcast and msg[:socket]!=0
               @s[:scnt]+=1
             end
           end

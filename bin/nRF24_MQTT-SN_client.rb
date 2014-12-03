@@ -252,7 +252,7 @@ end
 #add_gateway(0,{uri: options[:broker_uri],source: "default"})
 #pick_new_gateway
 pp @gateways
-MAX_IDLE=120
+MAX_IDLE=60
 Thread.new do #maintenance
   loop do
     begin
@@ -263,6 +263,9 @@ Thread.new do #maintenance
         if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
           puts "***********************************gw lost #{key} #{data},#{now}"
           @gateways[key][:status]=:fail
+          if key==@active_gw_id
+            gateway_close "timeout"
+          end
         end
       end
 
@@ -280,19 +283,23 @@ loop do
       if  not ret=pick_new_gateway
         sleep 0.5
         print "."
+        while poll_packet(s) do
+          #waste these.. congestion error ?
+        end
       end
-    end
-    if pac=poll_packet(s)
+
+    elsif pac=poll_packet(s)
       msg,@client_ip,@client_port=pac
-      puts "UDP(#{@client_ip}:#{@client_port})->RAD(#{@server_ip}:#{3}): #{pac}"
+      m=MqttSN::parse_message msg
+      puts "UDP(#{@client_ip}:#{@client_port})->RAD(#{@server_ip}:#{3}): #{m}"
       send_raw_packet msg,r,@server_ip,3
     end
 
     if pac=poll_packet(r)
       msg,client_ip,client_port=pac
-      puts "RAD(#{client_ip}:#{client_port})->UDP(#{@client_ip}:#{@client_port}): #{pac}"
+      m=MqttSN::parse_message msg
+      puts "RAD(#{client_ip}:#{client_port})->UDP(#{@client_ip}:#{@client_port}): #{m}"
       if client_port==:broadcast
-        m=MqttSN::parse_message msg
         gw_id=m[:gw_id]
         duration=m[:duration]||180
         uri="rad://#{client_ip}"
