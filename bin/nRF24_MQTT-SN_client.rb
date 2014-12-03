@@ -13,6 +13,9 @@ options=options.inject({}){|memo,(k,v)| memo[k.to_sym] = v; memo}
 options[:cs] = 22 if not options[:cs]
 options[:ce] = 27 if not options[:ce]
 options[:irq] = 17 if not options[:irq]
+options[:local_port] = 5555 if not options[:local_port]
+options[:rf_dr] = 0 if not options[:rd_dr]
+options[:chan] = 2 if not options[:chan]
 
 options = {}
 OptionParser.new do |opts|
@@ -25,7 +28,6 @@ OptionParser.new do |opts|
     options[:debug] = v
   end
 
-  options[:local_port] = 5555
   opts.on("-l", "--localport port", "MQTT-SN local port to listen (5555)") do |v|
     options[:local_port] = v.to_i
   end
@@ -42,12 +44,11 @@ OptionParser.new do |opts|
     options[:cs] = v.to_i
   end
 
-  options[:chan] = 2
+
   opts.on("--rf n", "nRF24 radio channel number [0..125] (2)") do |v|
     options[:chan] = v.to_i
   end
 
-  options[:rf_dr] = 0
   opts.on("--dr n", "nRF24 radio Data Rate [1,2] Mbps (2)") do |v|
     options[:rf_dr] = 1 if v.to_i==2
   end
