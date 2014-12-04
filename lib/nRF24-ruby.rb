@@ -335,7 +335,7 @@ class NRF24
   end
 
   def json
-    @s
+    @s.merge(clients: $clients)
   end
 
   def self.get_log
