@@ -335,7 +335,7 @@ class NRF24
   end
 
   def json
-    @s.merge(clients: $clients,gateways: $gateways)
+    @s.merge(clients: $clients,gateways: $gateways,active_gw_id: $active_gw_id)
   end
 
   def self.get_log

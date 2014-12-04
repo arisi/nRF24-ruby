@@ -182,7 +182,7 @@ loopc=0;
 sc=0;
 
 $gateways={}
-@active_gw_id=nil
+$active_gw_id=nil
  @gsem=Mutex.new
 
 def add_gateway gw_id,hash
@@ -204,14 +204,14 @@ end
 def gateway_close cause
   @gsem.synchronize do #one command at a time --
 
-    if @active_gw_id # if using one, mark it used, so it will be last reused
-      puts "Closing gw #{@active_gw_id} cause: #{cause}"
-      $gateways[@active_gw_id][:last_use]=Time.now.to_i
-      #if $gateways[@active_gw_id][:socket]
-        #$gateways[@active_gw_id][:socket].close
-        #$gateways[@active_gw_id][:socket]=nil
+    if $active_gw_id # if using one, mark it used, so it will be last reused
+      puts "Closing gw #{$active_gw_id} cause: #{cause}"
+      $gateways[$active_gw_id][:last_use]=Time.now.to_i
+      #if $gateways[$active_gw_id][:socket]
+        #$gateways[$active_gw_id][:socket].close
+        #$gateways[$active_gw_id][:socket]=nil
       #end
-      @active_gw_id=nil
+      $active_gw_id=nil
     end
   end
 end
@@ -231,14 +231,14 @@ def pick_new_gateway
         end
       end
       if pick
-        @active_gw_id=pick
-        NRF24::note "Opening Gateway #{@active_gw_id}: #{$gateways[@active_gw_id][:uri]}"
-        #@s,@server,@port = MqttSN::open_port $gateways[@active_gw_id][:uri]
-        #$gateways[@active_gw_id][:socket]=@s
-        @server_uri=$gateways[@active_gw_id][:uri]
+        $active_gw_id=pick
+        NRF24::note "Opening Gateway #{$active_gw_id}: #{$gateways[$active_gw_id][:uri]}"
+        #@s,@server,@port = MqttSN::open_port $gateways[$active_gw_id][:uri]
+        #$gateways[$active_gw_id][:socket]=@s
+        @server_uri=$gateways[$active_gw_id][:uri]
         @server_ip=@server_uri[6..@server_uri.size]
         puts "macccc #{@server_ip}"
-        $gateways[@active_gw_id][:last_use]=Time.now.to_i
+        $gateways[$active_gw_id][:last_use]=Time.now.to_i
       else
         puts "Error: no usable gw found !!"
       end
@@ -247,7 +247,7 @@ def pick_new_gateway
     puts "Error: receive thread died: #{e}"
     pp e.backtrace
   end
-  return @active_gw_id
+  return $active_gw_id
 end
 
 
@@ -267,7 +267,7 @@ Thread.new do #maintenance
         if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
           puts "***********************************gw lost #{key} #{data},#{now}"
           $gateways[key][:status]=:fail
-          if key==@active_gw_id
+          if key==$active_gw_id
             gateway_close "timeout"
           end
         end
@@ -282,7 +282,7 @@ end
 
 loop do
   begin
-    if not @active_gw_id or not $gateways[@active_gw_id]
+    if not $active_gw_id or not $gateways[$active_gw_id]
       puts "No active gw, wait ."
       if  not ret=pick_new_gateway
         sleep 0.5
