@@ -181,22 +181,22 @@ puts "Main Loop Starts!:"
 loopc=0;
 sc=0;
 
-@gateways={}
+$gateways={}
 @active_gw_id=nil
  @gsem=Mutex.new
 
 def add_gateway gw_id,hash
-  gw_id=0 if @gateways[0] and @gateways[0][:uri]==hash[:uri] ##this was the default one we found now... keep it as zero key
+  gw_id=0 if $gateways[0] and $gateways[0][:uri]==hash[:uri] ##this was the default one we found now... keep it as zero key
 
-  if not @gateways[gw_id]
-    @gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
+  if not $gateways[gw_id]
+    $gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
   else
-    @gateways[gw_id][:status]=:ok
-    if @gateways[gw_id][:uri]!=hash[:uri]
+    $gateways[gw_id][:status]=:ok
+    if $gateways[gw_id][:uri]!=hash[:uri]
       note "conflict -- gateway has moved? or duplicate"
     else
-      @gateways[gw_id][:stamp]=Time.now.to_i
-      @gateways[gw_id]=@gateways[gw_id].merge hash
+      $gateways[gw_id][:stamp]=Time.now.to_i
+      $gateways[gw_id]=$gateways[gw_id].merge hash
     end
   end
 end
@@ -206,10 +206,10 @@ def gateway_close cause
 
     if @active_gw_id # if using one, mark it used, so it will be last reused
       puts "Closing gw #{@active_gw_id} cause: #{cause}"
-      @gateways[@active_gw_id][:last_use]=Time.now.to_i
-      #if @gateways[@active_gw_id][:socket]
-        #@gateways[@active_gw_id][:socket].close
-        #@gateways[@active_gw_id][:socket]=nil
+      $gateways[@active_gw_id][:last_use]=Time.now.to_i
+      #if $gateways[@active_gw_id][:socket]
+        #$gateways[@active_gw_id][:socket].close
+        #$gateways[@active_gw_id][:socket]=nil
       #end
       @active_gw_id=nil
     end
@@ -222,7 +222,7 @@ def pick_new_gateway
     @gsem.synchronize do #one command at a time --
       pick=nil
       pick_t=0
-      @gateways.each do |gw_id,data|
+      $gateways.each do |gw_id,data|
         if data[:uri] and data[:status]==:ok
           if not pick or data[:last_use]==0  or pick_t>data[:last_use]
             pick=gw_id
@@ -232,13 +232,13 @@ def pick_new_gateway
       end
       if pick
         @active_gw_id=pick
-        NRF24::note "Opening Gateway #{@active_gw_id}: #{@gateways[@active_gw_id][:uri]}"
-        #@s,@server,@port = MqttSN::open_port @gateways[@active_gw_id][:uri]
-        #@gateways[@active_gw_id][:socket]=@s
-        @server_uri=@gateways[@active_gw_id][:uri]
+        NRF24::note "Opening Gateway #{@active_gw_id}: #{$gateways[@active_gw_id][:uri]}"
+        #@s,@server,@port = MqttSN::open_port $gateways[@active_gw_id][:uri]
+        #$gateways[@active_gw_id][:socket]=@s
+        @server_uri=$gateways[@active_gw_id][:uri]
         @server_ip=@server_uri[6..@server_uri.size]
         puts "macccc #{@server_ip}"
-        @gateways[@active_gw_id][:last_use]=Time.now.to_i
+        $gateways[@active_gw_id][:last_use]=Time.now.to_i
       else
         puts "Error: no usable gw found !!"
       end
@@ -255,7 +255,7 @@ end
 #@server_uri=options[:broker_uri]
 #add_gateway(0,{uri: options[:broker_uri],source: "default"})
 #pick_new_gateway
-pp @gateways
+pp $gateways
 MAX_IDLE=60
 Thread.new do #maintenance
   loop do
@@ -263,10 +263,10 @@ Thread.new do #maintenance
       sleep 1
       now=Time.now.to_i
       changes=false
-      @gateways.dup.each do |key,data|
+      $gateways.dup.each do |key,data|
         if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
           puts "***********************************gw lost #{key} #{data},#{now}"
-          @gateways[key][:status]=:fail
+          $gateways[key][:status]=:fail
           if key==@active_gw_id
             gateway_close "timeout"
           end
@@ -282,7 +282,7 @@ end
 
 loop do
   begin
-    if not @active_gw_id or not @gateways[@active_gw_id]
+    if not @active_gw_id or not $gateways[@active_gw_id]
       puts "No active gw, wait ."
       if  not ret=pick_new_gateway
         sleep 0.5
@@ -309,7 +309,7 @@ loop do
         uri="rad://#{client_ip}"
         add_gateway(gw_id,{uri: uri, source: m[:type], duration:duration,stamp: Time.now.to_i})
         now=Time.now.to_i
-        @gateways.each do |k,v|
+        $gateways.each do |k,v|
           puts "gw: #{k} , #{now-v[:stamp]}, #{v[:uri]}, #{v[:status]}"
         end
       else

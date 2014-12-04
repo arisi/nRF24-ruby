@@ -169,20 +169,20 @@ end
 
 
 
-@gateways={}
+$gateways={}
 @active_gw_id=nil
 @gsem=Mutex.new
 
 def add_gateway gw_id,hash
-  if not @gateways[gw_id]
-     @gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
+  if not $gateways[gw_id]
+     $gateways[gw_id]={stamp: Time.now.to_i, status: :ok, last_use: 0,last_ping: 0,counter_send:0, last_send: 0,counter_recv:0, last_recv: 0}.merge(hash)
   else
-    @gateways[gw_id][:status]=:ok
-    if @gateways[gw_id][:uri]!=hash[:uri]
+    $gateways[gw_id][:status]=:ok
+    if $gateways[gw_id][:uri]!=hash[:uri]
       puts "conflict -- gateway has moved? or duplicate"
     else
-      @gateways[gw_id][:stamp]=Time.now.to_i
-      @gateways[gw_id]=@gateways[gw_id].merge hash
+      $gateways[gw_id][:stamp]=Time.now.to_i
+      $gateways[gw_id]=$gateways[gw_id].merge hash
     end
   end
 end
@@ -192,10 +192,10 @@ def gateway_close cause
 
     if @active_gw_id # if using one, mark it used, so it will be last reused
       puts "Closing gw #{@active_gw_id} cause: #{cause}"
-      @gateways[@active_gw_id][:last_use]=Time.now.to_i
-      if @gateways[@active_gw_id][:socket]
-        @gateways[@active_gw_id][:socket].close
-        @gateways[@active_gw_id][:socket]=nil
+      $gateways[@active_gw_id][:last_use]=Time.now.to_i
+      if $gateways[@active_gw_id][:socket]
+        $gateways[@active_gw_id][:socket].close
+        $gateways[@active_gw_id][:socket]=nil
       end
       @active_gw_id=nil
     end
@@ -208,7 +208,7 @@ def pick_new_gateway
     @gsem.synchronize do #one command at a time --
       pick=nil
       pick_t=0
-      @gateways.each do |gw_id,data|
+      $gateways.each do |gw_id,data|
         if data[:uri] and data[:status]==:ok
           if not pick or data[:last_use]==0  or pick_t>data[:last_use]
             pick=gw_id
@@ -218,10 +218,10 @@ def pick_new_gateway
       end
       if pick
         @active_gw_id=pick
-        NRF24::note "Opening Gateway #{@active_gw_id}: #{@gateways[@active_gw_id][:uri]}"
-        #@s,@server,@port = MqttSN::open_port @gateways[@active_gw_id][:uri]
-        #@gateways[@active_gw_id][:socket]=@s
-        @gateways[@active_gw_id][:last_use]=Time.now.to_i
+        NRF24::note "Opening Gateway #{@active_gw_id}: #{$gateways[@active_gw_id][:uri]}"
+        #@s,@server,@port = MqttSN::open_port $gateways[@active_gw_id][:uri]
+        #$gateways[@active_gw_id][:socket]=@s
+        $gateways[@active_gw_id][:last_use]=Time.now.to_i
       else
         #note "Error: no usable gw found !!"
       end
@@ -247,7 +247,7 @@ MAX_IDLE=120
 def forwarder r0, hash={}
   add_gateway(0,{uri: hash[:broker_uri],source: "default"})
   pick_new_gateway
-  pp @gateways
+  pp $gateways
   uri = URI.parse(hash[:broker_uri])
   if uri.scheme== 'udp'
     @broker_host=uri.host
@@ -279,10 +279,10 @@ def forwarder r0, hash={}
         sleep 1
         now=Time.now.to_i
         changes=false
-        @gateways.dup.each do |key,data|
+        $gateways.dup.each do |key,data|
           if data[:stamp]<now-MAX_IDLE and data[:status]==:ok
             puts "***********************************gw lost #{key} #{data},#{now}"
-            @gateways[key][:status]=:fail
+            $gateways[key][:status]=:fail
             if key==@active_gw_id
               gateway_close "timeout"
             end
@@ -326,7 +326,7 @@ def forwarder r0, hash={}
             uri="rad://#{client_ip}"
             add_gateway(gw_id,{uri: uri, source: m[:type], duration:duration,stamp: Time.now.to_i})
             now=Time.now.to_i
-            #@gateways.each do |k,v|
+            #$gateways.each do |k,v|
             #  puts "gw: #{k} , #{now-v[:stamp]}, #{v[:uri]}"
             #end
             next
@@ -350,8 +350,8 @@ def forwarder r0, hash={}
               dest="#{@server}:#{port}"
               printf "sc %-24.24s <- %-24.24s | %s\n",$clients[my_key][:uri],"udp://#{@broker_host}:#{@broker_port}",mm.to_json
               NRF24::note "sc %-24.24s <- %-24.24s | %s",$clients[my_key][:uri],"udp://#{@broker_host}:#{@broker_port}",mm.to_json
-              #@gateways[@active_gw_id][:last_recv]=Time.now.to_i
-              #@gateways[@active_gw_id][:counter_recv]+=1
+              #$gateways[@active_gw_id][:last_recv]=Time.now.to_i
+              #$gateways[@active_gw_id][:counter_recv]+=1
               $clients[my_key][:last_send]=Time.now.to_i
               $clients[my_key][:counter_send]+=1
 
@@ -383,14 +383,14 @@ def forwarder r0, hash={}
 
         _,port,_,_ = $clients[key][:socket].addr
         dest="#{@server}:#{port}"
-        #@gateways[@active_gw_id][:last_send]=Time.now.to_i
-        #@gateways[@active_gw_id][:counter_send]+=1
+        #$gateways[@active_gw_id][:last_send]=Time.now.to_i
+        #$gateways[@active_gw_id][:counter_send]+=1
         $clients[key][:last_recv]=Time.now.to_i
         $clients[key][:counter_recv]+=1
         begin
-          if @active_gw_id and @gateways[@active_gw_id]
-            printf "cs %-24.24s -> %-24.24s | %s\n", $clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
-            NRF24::note  "cs %-24.24s -> %-24.24s | %s", $clients[key][:uri],@gateways[@active_gw_id][:uri],m.to_json
+          if @active_gw_id and $gateways[@active_gw_id]
+            printf "cs %-24.24s -> %-24.24s | %s\n", $clients[key][:uri],$gateways[@active_gw_id][:uri],m.to_json
+            NRF24::note  "cs %-24.24s -> %-24.24s | %s", $clients[key][:uri],$gateways[@active_gw_id][:uri],m.to_json
           else
             printf "cs %-24.24s -> %-24.24s | %s\n", $clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
             NRF24::note "cs %-24.24s -> %-24.24s | %s", $clients[key][:uri],"udp://#{@broker_host}:#{@broker_port}",m.to_json
