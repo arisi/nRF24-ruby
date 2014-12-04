@@ -73,6 +73,7 @@ class NRF24
       now=Time.now
       text=sprintf("%s: %s",(now.iso8601).gsub(/:|-|Z|\+.+/,'').gsub(/T/,' ')+"."+("%03d" % (now.usec.to_i/1000)),s)
       @@log << {stamp: Time.now.to_i, text: text.encode("UTF-8", :invalid=>:replace, :replace=>"?")}
+      puts text
     rescue => e
       pp e.backtrace
       puts "note dies: #{e} '#{str}'"

@@ -176,7 +176,7 @@ r=NRF24.new options.merge(id: :eka, ack: false, mac_header: true)
 s=UDPSocket.new
 s.bind("0.0.0.0",5555) # our port for clients
 
-puts "Main Loop Starts!:"
+NRF24::note "#{$PROGRAM_NAME} Starts:"
 
 loopc=0;
 sc=0;
@@ -193,7 +193,7 @@ def add_gateway gw_id,hash
   else
     $gateways[gw_id][:status]=:ok
     if $gateways[gw_id][:uri]!=hash[:uri]
-      note "conflict -- gateway has moved? or duplicate"
+      NRF24::note "conflict -- gateway has moved? or duplicate"
     else
       $gateways[gw_id][:stamp]=Time.now.to_i
       $gateways[gw_id]=$gateways[gw_id].merge hash
@@ -323,4 +323,6 @@ loop do
   end
   sleep 0.01
 end
+
+NRF24::note "#{$PROGRAM_NAME} Ends!"
 
