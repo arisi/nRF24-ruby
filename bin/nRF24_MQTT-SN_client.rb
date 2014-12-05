@@ -123,7 +123,7 @@ def poll_packet socket
       client_port=stuff[1]
       return [r,client_ip,client_port]
     rescue IO::WaitReadable
-      sleep 0.1
+      sleep 0.001
     rescue => e
       puts "Error: receive thread died: #{e}"
       pp e.backtrace
@@ -321,7 +321,7 @@ loop do
       puts "Error: receive thread died: #{e}"
       pp e.backtrace
   end
-  sleep 0.01
+  sleep 0.001
 end
 
 NRF24::note "#{$PROGRAM_NAME} Ends!"
